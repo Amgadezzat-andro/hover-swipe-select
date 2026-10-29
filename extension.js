@@ -78,6 +78,7 @@ export default class HoverSwipeSelectExtension extends Extension {
         this._target = null;
         this._cumX = 0;
         this._cumY = 0;
+        this._consumed = false;
     }
 
     _log(msg) {
@@ -137,8 +138,9 @@ export default class HoverSwipeSelectExtension extends Extension {
         // tracker is never left disabled.
         if (phase === Clutter.TouchpadGesturePhase.END ||
             phase === Clutter.TouchpadGesturePhase.CANCEL) {
+            const consumed = this._consumed;
             this._endGesture();
-            return Clutter.EVENT_PROPAGATE;
+            return consumed ? Clutter.EVENT_STOP : Clutter.EVENT_PROPAGATE;
         }
 
         if (phase === Clutter.TouchpadGesturePhase.BEGIN) {
@@ -155,6 +157,12 @@ export default class HoverSwipeSelectExtension extends Extension {
             this._log(`begin over "${win.title}"`);
             return Clutter.EVENT_PROPAGATE;
         }
+
+        // Once we've selected a window, swallow the rest of this swipe and keep the
+        // overview tracker disabled until END, so GNOME doesn't start its own
+        // "leave overview" gesture on top of the activation animation.
+        if (this._consumed)
+            return Clutter.EVENT_STOP;
 
         if (phase !== Clutter.TouchpadGesturePhase.UPDATE || !this._active)
             return Clutter.EVENT_PROPAGATE;
@@ -189,7 +197,8 @@ export default class HoverSwipeSelectExtension extends Extension {
         // Vertical and downward past the threshold → select the hovered window.
         if (this._cumY >= TRIGGER_DISTANCE) {
             const win = this._target;
-            this._endGesture();
+            this._active = false;
+            this._consumed = true;
             if (win && Main.overview.visible) {
                 this._log(`select "${win.title}"`);
                 Main.activateWindow(win, event.get_time());
